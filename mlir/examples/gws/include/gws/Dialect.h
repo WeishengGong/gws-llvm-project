@@ -7,12 +7,12 @@
 //===----------------------------------------------------------------------===//
 //
 // This file implements the IR Dialect for the Gws language.
-// See docs/Tutorials/Gws/Ch-2.md for more information.
+// See docs/Tutorials/Toy/Ch-2.md for more information.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TUTORIAL_GWS_DIALECT_H_
-#define MLIR_TUTORIAL_GWS_DIALECT_H_
+#ifndef MLIR_GWS_DIALECT_H
+#define MLIR_GWS_DIALECT_H
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
@@ -30,4 +30,4 @@
 #define GET_OP_CLASSES
 #include "gws/Ops.h.inc"
 
-#endif // MLIR_TUTORIAL_GWS_DIALECT_H_
+#endif // MLIR_GWS_DIALECT_H
