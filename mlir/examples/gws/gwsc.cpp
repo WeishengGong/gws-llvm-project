@@ -70,11 +70,11 @@ static cl::opt<OptimizationLevel> optimizationLevel(
   "opt",
   cl::desc("Enable optimizations"),
   cl::values(
-      clEnumValN(OptimizationLevel::None, "none", "disable all optimizations"),
-      clEnumValN(OptimizationLevel::Canonicalizer, "canonicalizer", "Canonicalizer"),
-      clEnumValN(OptimizationLevel::ShapeInference, "ShapeInference", "ShapeInference"),
-      clEnumValN(OptimizationLevel::CSE, "cse", "CSE"),
-      clEnumValN(OptimizationLevel::Full, "full", "enable full optimizations")
+    clEnumValN(OptimizationLevel::None, "none", "disable all optimizations"),
+    clEnumValN(OptimizationLevel::Canonicalizer, "canonicalizer", "Canonicalizer"),
+    clEnumValN(OptimizationLevel::ShapeInference, "ShapeInference", "ShapeInference"),
+    clEnumValN(OptimizationLevel::CSE, "cse", "CSE"),
+    clEnumValN(OptimizationLevel::Full, "full", "enable full optimizations")
   ),
   cl::init(OptimizationLevel::None)
 );
