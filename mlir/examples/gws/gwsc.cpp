@@ -16,6 +16,7 @@
 #include "gws/Lexer.h"
 #include "gws/MLIRGen.h"
 #include "gws/Parser.h"
+#include "gws/Passes.h"
 
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -61,7 +62,22 @@ static cl::opt<enum Action> emitAction(
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")));
 
-static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
+// static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
+namespace {
+  enum class OptimizationLevel { None, Canonicalizer, ShapeInference, CSE, Full };
+} // namespace
+static cl::opt<OptimizationLevel> optimizationLevel(
+  "opt",
+  cl::desc("Enable optimizations"),
+  cl::values(
+      clEnumValN(OptimizationLevel::None, "none", "disable all optimizations"),
+      clEnumValN(OptimizationLevel::Canonicalizer, "canonicalizer", "Canonicalizer"),
+      clEnumValN(OptimizationLevel::ShapeInference, "ShapeInference", "ShapeInference"),
+      clEnumValN(OptimizationLevel::CSE, "cse", "CSE"),
+      clEnumValN(OptimizationLevel::Full, "full", "enable full optimizations")
+  ),
+  cl::init(OptimizationLevel::None)
+);
 
 /// Returns a Gws AST resulting from parsing the file or a nullptr on error.
 std::unique_ptr<gws::ModuleAST> parseInputFile(llvm::StringRef filename) {
@@ -118,14 +134,56 @@ int dumpMLIR() {
   if (int error = loadMLIR(sourceMgr, context, module))
     return error;
 
-  if (enableOpt) {
+  // if (enableOpt) {
+  //   mlir::PassManager pm(module.get()->getName());
+  //   // Apply any generic pass manager command line options and run the pipeline.
+  //   if (mlir::failed(mlir::applyPassManagerCLOptions(pm)))
+  //     return 4;
+
+  //   // Inline all functions into main and then delete them.
+  //   pm.addPass(mlir::createInlinerPass());
+
+  //   // Now that there is only one function, we can infer the shapes of each of
+  //   // the operations.
+  //   mlir::OpPassManager &optPM = pm.nest<mlir::gws::FuncOp>();
+  //   optPM.addPass(mlir::gws::createShapeInferencePass());
+  //   optPM.addPass(mlir::createCanonicalizerPass());
+  //   optPM.addPass(mlir::createCSEPass());
+
+  //   if (mlir::failed(pm.run(*module)))
+  //     return 4;
+  // }
+  if (optimizationLevel != OptimizationLevel::None) {
     mlir::PassManager pm(module.get()->getName());
     // Apply any generic pass manager command line options and run the pipeline.
     if (mlir::failed(mlir::applyPassManagerCLOptions(pm)))
       return 4;
 
-    // Add a run of the canonicalizer to optimize the mlir module.
-    pm.addNestedPass<mlir::gws::FuncOp>(mlir::createCanonicalizerPass());
+    // Inline all functions into main and then delete them.
+    pm.addPass(mlir::createInlinerPass());
+
+    // Now that there is only one function, we can infer the shapes of each of
+    // the operations.
+    mlir::OpPassManager &optPM = pm.nest<mlir::gws::FuncOp>();
+    switch (optimizationLevel) {
+    case OptimizationLevel::Canonicalizer:
+      optPM.addPass(mlir::createCanonicalizerPass());
+      break;
+    case OptimizationLevel::ShapeInference:
+      optPM.addPass(mlir::gws::createShapeInferencePass());
+      break;
+    case OptimizationLevel::CSE:
+      optPM.addPass(mlir::createCSEPass());
+      break;
+    case OptimizationLevel::Full:
+      optPM.addPass(mlir::gws::createShapeInferencePass());
+      optPM.addPass(mlir::createCanonicalizerPass());
+      optPM.addPass(mlir::createCSEPass());
+      break;
+    default:
+      break;
+    }
+
     if (mlir::failed(pm.run(*module)))
       return 4;
   }

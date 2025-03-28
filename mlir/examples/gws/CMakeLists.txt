@@ -22,17 +22,21 @@ add_gws(gwsc
   parser/AST.cpp
   mlir/MLIRGen.cpp
   mlir/Dialect.cpp
+  mlir/ShapeInferencePass.cpp
   mlir/GwsCombine.cpp
 
   DEPENDS
   GwsOpsIncGen
+  GwsShapeInferenceInterfaceIncGen
   GwsCombineIncGen
   )
-include_directories(include/)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include/)
 target_link_libraries(gwsc
   PRIVATE
   MLIRAnalysis
+  MLIRCastInterfaces
+  MLIRCallInterfaces
   MLIRFunctionInterfaces
   MLIRIR
   MLIRParser
