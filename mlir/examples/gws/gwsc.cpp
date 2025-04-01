@@ -64,7 +64,7 @@ static cl::opt<enum Action> emitAction(
 
 // static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
 namespace {
-  enum class OptimizationLevel { None, Canonicalizer, ShapeInference, CSE, Full };
+  enum class OptimizationLevel { None, Canonicalizer, ShapeInference, Full };
 } // namespace
 static cl::opt<OptimizationLevel> optimizationLevel(
   "opt",
@@ -72,8 +72,7 @@ static cl::opt<OptimizationLevel> optimizationLevel(
   cl::values(
     clEnumValN(OptimizationLevel::None, "none", "disable all optimizations"),
     clEnumValN(OptimizationLevel::Canonicalizer, "canonicalizer", "Canonicalizer"),
-    clEnumValN(OptimizationLevel::ShapeInference, "ShapeInference", "ShapeInference"),
-    clEnumValN(OptimizationLevel::CSE, "cse", "CSE"),
+    clEnumValN(OptimizationLevel::ShapeInference, "shapeInference", "ShapeInference"),
     clEnumValN(OptimizationLevel::Full, "full", "enable full optimizations")
   ),
   cl::init(OptimizationLevel::None)
@@ -171,8 +170,6 @@ int dumpMLIR() {
       break;
     case OptimizationLevel::ShapeInference:
       optPM.addPass(mlir::gws::createShapeInferencePass());
-      break;
-    case OptimizationLevel::CSE:
       optPM.addPass(mlir::createCSEPass());
       break;
     case OptimizationLevel::Full:
