@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/IR/Diagnostics.h"
 #include "gws/AST.h"
 #include "gws/Dialect.h"
@@ -18,10 +19,12 @@
 #include "gws/Parser.h"
 #include "gws/Passes.h"
 
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -55,28 +58,16 @@ static cl::opt<enum InputType> inputType(
                           "load the input file as an MLIR file")));
 
 namespace {
-enum Action { None, DumpAST, DumpMLIR };
+enum Action { None, DumpAST, DumpMLIR, DumpMLIRAffine };
 } // namespace
 static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output desired"),
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
-    cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")));
+    cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
+    cl::values(clEnumValN(DumpMLIRAffine, "mlir-affine",
+                          "output the MLIR dump after affine lowering")));
 
-// static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
-namespace {
-  enum class OptimizationLevel { None, Canonicalizer, ShapeInference, Full };
-} // namespace
-static cl::opt<OptimizationLevel> optimizationLevel(
-  "opt",
-  cl::desc("Enable optimizations"),
-  cl::values(
-    clEnumValN(OptimizationLevel::None, "none", "disable all optimizations"),
-    clEnumValN(OptimizationLevel::Canonicalizer, "canonicalizer", "Canonicalizer"),
-    clEnumValN(OptimizationLevel::ShapeInference, "shapeInference", "ShapeInference"),
-    clEnumValN(OptimizationLevel::Full, "full", "enable full optimizations")
-  ),
-  cl::init(OptimizationLevel::None)
-);
+static cl::opt<bool> enableOpt("opt", cl::desc("Enable optimizations"));
 
 /// Returns a Gws AST resulting from parsing the file or a nullptr on error.
 std::unique_ptr<gws::ModuleAST> parseInputFile(llvm::StringRef filename) {
@@ -123,7 +114,10 @@ int loadMLIR(llvm::SourceMgr &sourceMgr, mlir::MLIRContext &context,
 }
 
 int dumpMLIR() {
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+
+  mlir::MLIRContext context(registry);
   // Load our Dialect in this MLIR Context.
   context.getOrLoadDialect<mlir::gws::GwsDialect>();
 
@@ -133,57 +127,44 @@ int dumpMLIR() {
   if (int error = loadMLIR(sourceMgr, context, module))
     return error;
 
-  // if (enableOpt) {
-  //   mlir::PassManager pm(module.get()->getName());
-  //   // Apply any generic pass manager command line options and run the pipeline.
-  //   if (mlir::failed(mlir::applyPassManagerCLOptions(pm)))
-  //     return 4;
+  mlir::PassManager pm(module.get()->getName());
+  // Apply any generic pass manager command line options and run the pipeline.
+  if (mlir::failed(mlir::applyPassManagerCLOptions(pm)))
+    return 4;
 
-  //   // Inline all functions into main and then delete them.
-  //   pm.addPass(mlir::createInlinerPass());
+  // Check to see what granularity of MLIR we are compiling to.
+  bool isLoweringToAffine = emitAction >= Action::DumpMLIRAffine;
 
-  //   // Now that there is only one function, we can infer the shapes of each of
-  //   // the operations.
-  //   mlir::OpPassManager &optPM = pm.nest<mlir::gws::FuncOp>();
-  //   optPM.addPass(mlir::gws::createShapeInferencePass());
-  //   optPM.addPass(mlir::createCanonicalizerPass());
-  //   optPM.addPass(mlir::createCSEPass());
-
-  //   if (mlir::failed(pm.run(*module)))
-  //     return 4;
-  // }
-  if (optimizationLevel != OptimizationLevel::None) {
-    mlir::PassManager pm(module.get()->getName());
-    // Apply any generic pass manager command line options and run the pipeline.
-    if (mlir::failed(mlir::applyPassManagerCLOptions(pm)))
-      return 4;
-
+  if (enableOpt || isLoweringToAffine) {
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
 
     // Now that there is only one function, we can infer the shapes of each of
     // the operations.
     mlir::OpPassManager &optPM = pm.nest<mlir::gws::FuncOp>();
-    switch (optimizationLevel) {
-    case OptimizationLevel::Canonicalizer:
-      optPM.addPass(mlir::createCanonicalizerPass());
-      break;
-    case OptimizationLevel::ShapeInference:
-      optPM.addPass(mlir::gws::createShapeInferencePass());
-      optPM.addPass(mlir::createCSEPass());
-      break;
-    case OptimizationLevel::Full:
-      optPM.addPass(mlir::gws::createShapeInferencePass());
-      optPM.addPass(mlir::createCanonicalizerPass());
-      optPM.addPass(mlir::createCSEPass());
-      break;
-    default:
-      break;
-    }
-
-    if (mlir::failed(pm.run(*module)))
-      return 4;
+    optPM.addPass(mlir::gws::createShapeInferencePass());
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
   }
+
+  if (isLoweringToAffine) {
+    // Partially lower the gws dialect.
+    pm.addPass(mlir::gws::createLowerToAffinePass());
+
+    // Add a few cleanups post lowering.
+    mlir::OpPassManager &optPM = pm.nest<mlir::func::FuncOp>();
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+
+    // Add optimizations if enabled.
+    if (enableOpt) {
+      optPM.addPass(mlir::affine::createLoopFusionPass());
+      optPM.addPass(mlir::affine::createAffineScalarReplacementPass());
+    }
+  }
+
+  if (mlir::failed(pm.run(*module)))
+    return 4;
 
   module->dump();
   return 0;
@@ -215,6 +196,7 @@ int main(int argc, char **argv) {
   case Action::DumpAST:
     return dumpAST();
   case Action::DumpMLIR:
+  case Action::DumpMLIRAffine:
     return dumpMLIR();
   default:
     llvm::errs() << "No action specified (parsing only?), use -emit=<action>\n";

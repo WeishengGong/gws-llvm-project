@@ -22,6 +22,7 @@ add_gws(gwsc
   parser/AST.cpp
   mlir/MLIRGen.cpp
   mlir/Dialect.cpp
+  mlir/LowerToAffineLoops.cpp
   mlir/ShapeInferencePass.cpp
   mlir/GwsCombine.cpp
 
@@ -32,14 +33,19 @@ add_gws(gwsc
   )
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include/)
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
 target_link_libraries(gwsc
   PRIVATE
-  MLIRAnalysis
-  MLIRCastInterfaces
-  MLIRCallInterfaces
-  MLIRFunctionInterfaces
-  MLIRIR
-  MLIRParser
-  MLIRPass
-  MLIRSideEffectInterfaces
-  MLIRTransforms)
+    ${dialect_libs}
+    ${extension_libs}
+    MLIRAnalysis
+    MLIRCastInterfaces
+    MLIRCallInterfaces
+    MLIRFunctionInterfaces
+    MLIRIR
+    MLIRParser
+    MLIRPass
+    MLIRSideEffectInterfaces
+    MLIRSupport
+    MLIRTransforms)
